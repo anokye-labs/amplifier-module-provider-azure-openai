@@ -210,7 +210,7 @@ class TestAzureRetryConfigAlignment:
             OpenAIProvider,
             base_url="https://example.openai.azure.com/openai/v1/",
             api_key="test-key",
-            config=config_overrides,
+            config=config_overrides,  # empty dict = use defaults
         )
 
     def test_retry_config_inherited_and_is_retry_config(self):
