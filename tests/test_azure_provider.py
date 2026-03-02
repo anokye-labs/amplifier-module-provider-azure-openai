@@ -202,49 +202,36 @@ class TestAzureRetryConfigAlignment:
     corrected configuration since it does not construct RetryConfig itself.
     """
 
-    def test_retry_config_inherited_and_is_retry_config(self):
-        """Azure provider should inherit _retry_config of type RetryConfig."""
+    @staticmethod
+    def _make_provider(**config_overrides):
         from amplifier_module_provider_openai import OpenAIProvider
 
-        provider = _create_azure_provider(
+        return _create_azure_provider(
             OpenAIProvider,
             base_url="https://example.openai.azure.com/openai/v1/",
             api_key="test-key",
+            config=config_overrides,
         )
+
+    def test_retry_config_inherited_and_is_retry_config(self):
+        """Azure provider should inherit _retry_config of type RetryConfig."""
+        provider = self._make_provider()
         assert hasattr(provider, "_retry_config")
         assert isinstance(provider._retry_config, RetryConfig)
 
     def test_retry_config_uses_initial_delay(self):
         """Inherited RetryConfig must use initial_delay (Rust field name)."""
-        from amplifier_module_provider_openai import OpenAIProvider
-
-        provider = _create_azure_provider(
-            OpenAIProvider,
-            base_url="https://example.openai.azure.com/openai/v1/",
-            api_key="test-key",
-            config={"min_retry_delay": 3.0},
-        )
+        provider = self._make_provider(min_retry_delay=3.0)
         assert provider._retry_config.initial_delay == 3.0
 
     def test_retry_config_jitter_from_bool(self):
         """Inherited RetryConfig.jitter must come from bool(config), not float(config)."""
-        from amplifier_module_provider_openai import OpenAIProvider
-
         # Default jitter=True -> RetryConfig converts to 0.2
-        provider = _create_azure_provider(
-            OpenAIProvider,
-            base_url="https://example.openai.azure.com/openai/v1/",
-            api_key="test-key",
-        )
+        provider = self._make_provider()
         assert provider._retry_config.jitter == 0.2  # True -> default jitter factor
 
         # Explicit jitter=False -> 0.0
-        provider_no_jitter = _create_azure_provider(
-            OpenAIProvider,
-            base_url="https://example.openai.azure.com/openai/v1/",
-            api_key="test-key",
-            config={"retry_jitter": False},
-        )
+        provider_no_jitter = self._make_provider(retry_jitter=False)
         assert provider_no_jitter._retry_config.jitter == 0.0
 
     def test_no_jitter_compat_code_in_azure_source(self):
