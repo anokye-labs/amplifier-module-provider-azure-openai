@@ -48,8 +48,13 @@ class MockOpenAIProvider:
 
 
 def test_extended_thinking_matches_openai_behaviour():
-    provider = AzureOpenAIProvider(
-        base_url="https://example", api_key="test-key", config={"max_tokens": 1024}
+    from amplifier_module_provider_openai import OpenAIProvider
+
+    provider = _create_azure_provider(
+        OpenAIProvider,
+        base_url="https://example.openai.azure.com/openai/v1/",
+        api_key="test-key",
+        config={"max_tokens": 1024},
     )
     provider.client.responses.create = AsyncMock(return_value=DummyResponse())
 
@@ -69,7 +74,13 @@ def test_extended_thinking_matches_openai_behaviour():
 
 def test_tool_call_repair_emits_azure_provider_name():
     """Azure provider repairs missing tool results and emits correct provider name."""
-    provider = AzureOpenAIProvider(base_url="https://example", api_key="test-key")
+    from amplifier_module_provider_openai import OpenAIProvider
+
+    provider = _create_azure_provider(
+        OpenAIProvider,
+        base_url="https://example.openai.azure.com/openai/v1/",
+        api_key="test-key",
+    )
     provider.client.responses.create = AsyncMock(return_value=DummyResponse())
 
     fake_coordinator = FakeCoordinator()
@@ -136,7 +147,13 @@ def test_mount_returns_cleanup_and_closes_client():
 
 
 def test_incomplete_tool_call_removed_for_azure():
-    provider = AzureOpenAIProvider(base_url="https://example", api_key="test-key")
+    from amplifier_module_provider_openai import OpenAIProvider
+
+    provider = _create_azure_provider(
+        OpenAIProvider,
+        base_url="https://example.openai.azure.com/openai/v1/",
+        api_key="test-key",
+    )
     provider.client.responses.create = AsyncMock(return_value=DummyResponse())
 
     messages = [
