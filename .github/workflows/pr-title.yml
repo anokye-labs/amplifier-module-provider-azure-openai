@@ -1,0 +1,60 @@
+name: PR Title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    name: pr-title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import sys
+
+          title = (os.environ.get('PR_TITLE') or '').strip()
+          if not title:
+              print('PR title cannot be empty.', file=sys.stderr)
+              raise SystemExit(1)
+
+          if re.match(r'^bump\s+.+\s+from\s+.+\s+to\s+.+$', title, re.IGNORECASE):
+              print('Dependabot-style bump title allowed.')
+              raise SystemExit(0)
+
+          if re.match(r'^(build|chore)(\([^)]*\))?:\s*bump\s+', title, re.IGNORECASE):
+              print('Dependabot-style bump title allowed.')
+              raise SystemExit(0)
+
+          invalid_patterns = [
+              r'^wip\b',
+              r'^\[\s*wip\s*\]',
+              r'^\(\s*wip\s*\)',
+              r'^draft\b',
+              r'^\[\s*draft\s*\]',
+              r'^\(\s*draft\s*\)',
+              r'^(dnm|do not merge)\b',
+              r'^\[\s*(dnm|do not merge)\s*\]',
+              r'^\(\s*(dnm|do not merge)\s*\)',
+          ]
+
+          if any(re.match(pattern, title, re.IGNORECASE) for pattern in invalid_patterns):
+              print('PR title appears to be WIP/draft-style. Update it to a reviewable title.', file=sys.stderr)
+              raise SystemExit(1)
+
+          print(f'PR title accepted: {title}')
+          PY
