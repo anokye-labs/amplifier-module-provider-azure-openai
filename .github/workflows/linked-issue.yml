@@ -1,0 +1,65 @@
+name: Linked Issue
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check-linked-issue:
+    name: check-linked-issue
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate linked issue policy
+        env:
+          PR_PAYLOAD: ${{ toJson(github.event.pull_request) }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+
+          pr = json.loads(os.environ['PR_PAYLOAD'])
+          title = pr.get('title') or ''
+          body = pr.get('body') or ''
+          labels = {
+              label.get('name')
+              for label in (pr.get('labels') or [])
+              if isinstance(label, dict) and label.get('name')
+          }
+          actor = ((pr.get('user') or {}).get('login') or '').lower()
+          trusted_bots = {'dependabot[bot]', 'renovate[bot]', 'github-actions[bot]'}
+
+          if actor in trusted_bots:
+              print(f'Skipping linked-issue check for trusted bot actor: {actor}')
+              raise SystemExit(0)
+
+          if 'no-linked-issue-required' in labels:
+              print('Bypass label present: no-linked-issue-required')
+              raise SystemExit(0)
+
+          combined = f'{title}\n{body}'
+          if re.search(r'(^|[\s([])#\d+\b', combined, re.MULTILINE):
+              print('Issue reference found in PR title or body.')
+              raise SystemExit(0)
+
+          if re.search(r'https://github\.com/[^/\s]+/[^/\s]+/issues/\d+\b', combined, re.IGNORECASE):
+              print('Issue URL found in PR title or body.')
+              raise SystemExit(0)
+
+          print(
+              'PRs must reference an issue in the title or body (for example `Closes #123`) '
+              'unless the `no-linked-issue-required` label is applied.',
+              file=sys.stderr,
+          )
+          raise SystemExit(1)
+          PY
