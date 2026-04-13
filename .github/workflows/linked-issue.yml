@@ -18,32 +18,48 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Validate linked issue policy
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
-        with:
-          script: |
-            const pr = context.payload.pull_request;
-            const bypassLabel = 'no-linked-issue-required';
-            const botActors = new Set(['dependabot[bot]', 'renovate[bot]', 'github-actions[bot]']);
+        env:
+          PR_PAYLOAD: ${{ toJson(github.event.pull_request) }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import sys
 
-            if (botActors.has(pr.user.login)) {
-              core.info(`Skipping linked-issue check for trusted bot actor: ${pr.user.login}`);
-              return;
-            }
+          pr = json.loads(os.environ['PR_PAYLOAD'])
+          title = pr.get('title') or ''
+          body = pr.get('body') or ''
+          labels = {
+              label.get('name')
+              for label in (pr.get('labels') or [])
+              if isinstance(label, dict) and label.get('name')
+          }
+          actor = ((pr.get('user') or {}).get('login') or '').lower()
+          trusted_bots = {'dependabot[bot]', 'renovate[bot]', 'github-actions[bot]'}
 
-            if (pr.labels.some((label) => label.name === bypassLabel)) {
-              core.info(`Bypass label present: ${bypassLabel}`);
-              return;
-            }
+          if actor in trusted_bots:
+              print(f'Skipping linked-issue check for trusted bot actor: {actor}')
+              raise SystemExit(0)
 
-            const combined = `${pr.title ?? ''}\n${pr.body ?? ''}`;
-            const issueRefPattern = /(^|[\s([])#\d+\b/m;
-            const issueUrlPattern = /https:\/\/github\.com\/[^\/\s]+\/[^\/\s]+\/issues\/\d+\b/i;
+          if 'no-linked-issue-required' in labels:
+              print('Bypass label present: no-linked-issue-required')
+              raise SystemExit(0)
 
-            if (issueRefPattern.test(combined) || issueUrlPattern.test(combined)) {
-              core.info('Issue reference found in PR title or body.');
-              return;
-            }
+          combined = f'{title}\n{body}'
+          if re.search(r'(^|[\s([])#\d+\b', combined, re.MULTILINE):
+              print('Issue reference found in PR title or body.')
+              raise SystemExit(0)
 
-            core.setFailed(
-              'PRs must reference an issue in the title or body (for example `Closes #123`) unless the `no-linked-issue-required` label is applied.'
-            );
+          if re.search(r'https://github\.com/[^/\s]+/[^/\s]+/issues/\d+\b', combined, re.IGNORECASE):
+              print('Issue URL found in PR title or body.')
+              raise SystemExit(0)
+
+          print(
+              'PRs must reference an issue in the title or body (for example `Closes #123`) '
+              'unless the `no-linked-issue-required` label is applied.',
+              file=sys.stderr,
+          )
+          raise SystemExit(1)
+          PY

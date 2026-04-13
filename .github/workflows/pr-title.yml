@@ -18,37 +18,43 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Validate PR title
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
-        with:
-          script: |
-            const title = (context.payload.pull_request.title || '').trim();
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import sys
 
-            if (!title) {
-              core.setFailed('PR title cannot be empty.');
-              return;
-            }
+          title = (os.environ.get('PR_TITLE') or '').strip()
+          if not title:
+              print('PR title cannot be empty.', file=sys.stderr)
+              raise SystemExit(1)
 
-            const isDependabotStyle = /^bump\s+.+\s+from\s+.+\s+to\s+.+$/i.test(title)
-              || /^(build|chore)(\([^)]*\))?:\s*bump\s+/i.test(title);
+          if re.match(r'^bump\s+.+\s+from\s+.+\s+to\s+.+$', title, re.IGNORECASE):
+              print('Dependabot-style bump title allowed.')
+              raise SystemExit(0)
 
-            if (isDependabotStyle) {
-              core.info('Dependabot-style bump title allowed.');
-              return;
-            }
+          if re.match(r'^(build|chore)(\([^)]*\))?:\s*bump\s+', title, re.IGNORECASE):
+              print('Dependabot-style bump title allowed.')
+              raise SystemExit(0)
 
-            const invalidPatterns = [
-              /^wip\b/i,
-              /^\[\s*wip\s*\]/i,
-              /^\(\s*wip\s*\)/i,
-              /^draft\b/i,
-              /^\[\s*draft\s*\]/i,
-              /^\(\s*draft\s*\)/i,
-              /^(dnm|do not merge)\b/i,
-            ];
+          invalid_patterns = [
+              r'^wip\b',
+              r'^\[\s*wip\s*\]',
+              r'^\(\s*wip\s*\)',
+              r'^draft\b',
+              r'^\[\s*draft\s*\]',
+              r'^\(\s*draft\s*\)',
+              r'^(dnm|do not merge)\b',
+              r'^\[\s*(dnm|do not merge)\s*\]',
+              r'^\(\s*(dnm|do not merge)\s*\)',
+          ]
 
-            if (invalidPatterns.some((pattern) => pattern.test(title))) {
-              core.setFailed('PR title cannot be empty or WIP/draft-style. Update it to a reviewable title.');
-              return;
-            }
+          if any(re.match(pattern, title, re.IGNORECASE) for pattern in invalid_patterns):
+              print('PR title appears to be WIP/draft-style. Update it to a reviewable title.', file=sys.stderr)
+              raise SystemExit(1)
 
-            core.info(`PR title accepted: ${title}`);
+          print(f'PR title accepted: {title}')
+          PY
